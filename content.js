@@ -227,13 +227,20 @@ function dataUrlToBytes(dataUrl) {
 // ── IMAGE DETECTOR ───────────────────────────────────────────────────────────
 
 function isCandidateImage(img) {
-  return (
-    img.tagName === "IMG" &&
-    img.src &&
-    !img.src.startsWith("data:") &&
-    img.naturalWidth >= MIN_IMAGE_PX &&
-    img.naturalHeight >= MIN_IMAGE_PX
-  );
+  if (img.tagName !== "IMG" || !img.src || img.src.startsWith("data:")) return false;
+  if (img.naturalWidth < MIN_IMAGE_PX || img.naturalHeight < MIN_IMAGE_PX) return false;
+
+  // Exclude images that belong to a USER-authored turn. When a slide has an
+  // attached reference image, ChatGPT echoes it as a thumbnail inside the
+  // user's own message bubble once sent — that thumbnail is a real, large
+  // <img> that appears almost instantly, and was getting mistaken for the
+  // generated result (causing the sequence to "finish" a slide in ~2 seconds
+  // and move on to the next prompt while the real generation was still
+  // running). Only images inside an ASSISTANT turn are ever candidates.
+  const turn = img.closest("[data-message-author-role]");
+  if (turn && turn.getAttribute("data-message-author-role") === "user") return false;
+
+  return true;
 }
 
 // ChatGPT tags each message group with data-message-author-role="user" or

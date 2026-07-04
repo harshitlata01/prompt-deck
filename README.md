@@ -169,13 +169,16 @@ deck script, if you're not using Claude Code.
   stop/regenerate button state (a moving target that changes with every UI
   update), PromptDeck polls the DOM for a new `<img>` large enough to be a
   generated slide (not an avatar or icon) and waits for it to finish loading.
-  It also scopes the search to the current slide's own conversation turn
-  (via ChatGPT's `data-message-author-role="user"` message markers), so a
-  previous slide's image finishing late can't get mistaken for the current
-  slide's image. If nothing shows up within 3 minutes, that slide is marked
-  **No capture** (the prompt was sent fine — PromptDeck just couldn't
-  confirm/save an image for it) and the sequence continues with the next
-  prompt rather than stalling the whole deck.
+  Candidates are restricted to images inside an **assistant**-authored turn
+  (via ChatGPT's `data-message-author-role` message markers) — this both
+  scopes detection to the current slide's own turn (so a previous slide's
+  image finishing late can't get mistaken for the current one) and excludes
+  images inside the **user's** own turn (so an attached reference image,
+  which ChatGPT echoes back as a thumbnail in the user's message bubble, is
+  never mistaken for the generated result). If nothing shows up within 3
+  minutes, that slide is marked **No capture** (the prompt was sent fine —
+  PromptDeck just couldn't confirm/save an image for it) and the sequence
+  continues with the next prompt rather than stalling the whole deck.
 - **Capturing the image**: PromptDeck first tries fetching the image's bytes
   directly; if that's blocked by cross-origin restrictions, it falls back to
   drawing the already-rendered `<img>` onto a canvas. Captured images are
