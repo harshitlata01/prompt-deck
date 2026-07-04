@@ -17,10 +17,10 @@
 
 "use strict";
 
-const WAIT_MS          = 15_000;  // Max wait for textarea to appear
-const IMAGE_TIMEOUT_MS = 90_000;  // Max wait for a slide's image to render
-const IMAGE_POLL_MS    = 700;     // Polling interval for the image detector
-const MIN_IMAGE_PX     = 200;     // Below this, treat an <img> as UI chrome, not a generated slide
+const WAIT_MS          = 15_000;   // Max wait for textarea to appear
+const IMAGE_TIMEOUT_MS = 180_000;  // Max wait for a slide's image to render
+const IMAGE_POLL_MS    = 700;      // Polling interval for the image detector
+const MIN_IMAGE_PX     = 200;      // Below this, treat an <img> as UI chrome, not a generated slide
 
 // ── ENTRY POINT ──────────────────────────────────────────────────────────────
 
@@ -46,10 +46,15 @@ const MIN_IMAGE_PX     = 200;     // Below this, treat an <img> as UI chrome, no
 // ── SEQUENCE DRIVER ──────────────────────────────────────────────────────────
 
 async function runSequence(runId, slides) {
+  // A manual per-slide retry reuses the deck's runId with a 1-item queue —
+  // preserve the deck's real total and any earlier results instead of
+  // wiping them out.
+  const existing = (await chrome.storage.local.get(runKey(runId)))[runKey(runId)] || {};
   await setRunStatus(runId, {
-    total: slides.length,
-    doneNumbers: [],
-    failedNumbers: [],
+    total: existing.total || slides.length,
+    doneNumbers: existing.doneNumbers || [],
+    failedNumbers: existing.failedNumbers || [],
+    noCaptureNumbers: existing.noCaptureNumbers || [],
     phase: "running",
   });
 
@@ -67,7 +72,7 @@ async function runSequence(runId, slides) {
 
     const injected = await injectText(textarea, slide.combined);
     if (!injected) {
-      await markSlideOutcome(runId, slide.number, false);
+      await markSlideOutcome(runId, slide.number, "failed");
       showBadge(`✕ Slide ${slide.number}: couldn't inject prompt`, "fail");
       continue;
     }
@@ -78,16 +83,18 @@ async function runSequence(runId, slides) {
 
     const imgEl = await waitForGeneratedImage(IMAGE_TIMEOUT_MS);
     if (!imgEl) {
-      await markSlideOutcome(runId, slide.number, false);
-      showBadge(`✕ Slide ${slide.number}: no image detected in time`, "fail");
+      // The prompt was sent fine — ChatGPT may still be working, or already
+      // rendered an image our detector didn't recognize. Not a hard failure.
+      await markSlideOutcome(runId, slide.number, "no-capture");
+      showBadge(`Slide ${slide.number}: no image confirmed — check the chat`, "warn");
       await sleep(1200);
       continue;
     }
 
     const dataUrl = await captureImage(imgEl);
     if (!dataUrl) {
-      await markSlideOutcome(runId, slide.number, false);
-      showBadge(`✕ Slide ${slide.number}: image found but couldn't be saved`, "fail");
+      await markSlideOutcome(runId, slide.number, "no-capture");
+      showBadge(`Slide ${slide.number}: image seen but couldn't be saved`, "warn");
       await sleep(1200);
       continue;
     }
@@ -95,7 +102,7 @@ async function runSequence(runId, slides) {
     await chrome.storage.local.set({
       [imageKey(runId, slide.number)]: { number: slide.number, title: slide.title, dataUrl },
     });
-    await markSlideOutcome(runId, slide.number, true);
+    await markSlideOutcome(runId, slide.number, "done");
     showBadge(`✓ Slide ${slide.number} image captured`, "success");
 
     await sleep(1200); // let the UI settle before the next prompt
@@ -110,14 +117,20 @@ async function runSequence(runId, slides) {
   }
 }
 
-async function markSlideOutcome(runId, number, ok) {
+async function markSlideOutcome(runId, number, outcome) {
   const key = runKey(runId);
-  const cur = (await chrome.storage.local.get(key))[key] || { doneNumbers: [], failedNumbers: [] };
-  const doneNumbers = cur.doneNumbers || [];
-  const failedNumbers = cur.failedNumbers || [];
-  if (ok) doneNumbers.push(number);
+  const cur = (await chrome.storage.local.get(key))[key] || {};
+  const strip = (arr) => (arr || []).filter((n) => n !== number);
+
+  const doneNumbers = strip(cur.doneNumbers);
+  const failedNumbers = strip(cur.failedNumbers);
+  const noCaptureNumbers = strip(cur.noCaptureNumbers);
+
+  if (outcome === "done") doneNumbers.push(number);
+  else if (outcome === "no-capture") noCaptureNumbers.push(number);
   else failedNumbers.push(number);
-  await setRunStatus(runId, { doneNumbers, failedNumbers });
+
+  await setRunStatus(runId, { doneNumbers, failedNumbers, noCaptureNumbers });
 }
 
 // ── STORAGE HELPERS ──────────────────────────────────────────────────────────
@@ -208,18 +221,33 @@ function isCandidateImage(img) {
   );
 }
 
+// ChatGPT sometimes inserts a placeholder <img> immediately and swaps its
+// `src` once generation finishes, rather than appending a brand-new element.
+// So "the image is ready" has to mean either "a new candidate element
+// appeared" OR "the last candidate element's src changed" — watching only
+// for new elements misses the swap case and times out even though the image
+// rendered fine.
 function waitForGeneratedImage(timeoutMs) {
-  const before = new Set(document.querySelectorAll("img"));
+  const candidates = () => Array.from(document.querySelectorAll("img")).filter(isCandidateImage);
+
+  const baseline = candidates();
+  const baselineCount = baseline.length;
+  const baselineLast = baseline.length ? baseline[baseline.length - 1] : null;
+  const baselineSrc = baselineLast ? baselineLast.src : null;
 
   return new Promise((resolve) => {
     const start = Date.now();
 
     const poll = () => {
-      const found = Array.from(document.querySelectorAll("img")).find(
-        (img) => !before.has(img) && isCandidateImage(img)
-      );
-      if (found) {
-        resolve(found);
+      const list = candidates();
+      const last = list.length ? list[list.length - 1] : null;
+
+      const isNew =
+        last &&
+        (list.length > baselineCount || last !== baselineLast || last.src !== baselineSrc);
+
+      if (last && isNew && last.complete && last.naturalWidth > 0) {
+        resolve(last);
         return;
       }
       if (Date.now() - start > timeoutMs) {
@@ -391,6 +419,7 @@ async function injectText(el, text) {
 const BADGE_COLORS = {
   info:    "#22D3EE",
   success: "#00E87A",
+  warn:    "#F5C242",
   fail:    "#FF4D4D",
 };
 

@@ -116,11 +116,21 @@ button{font-family:inherit}
 .slide-dot{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0}
 .slide-dot.active{background:var(--cyan);animation:fade 1.2s ease-in-out infinite}
 .slide-dot.done{background:var(--green)}
+.slide-dot.no-capture{background:var(--yellow)}
 .slide-dot.failed{background:var(--red)}
 @keyframes fade{0%,100%{opacity:1}50%{opacity:.3}}
 .slide-item.active .slide-status-text{color:var(--cyan)}
 .slide-item.done .slide-status-text{color:var(--green)}
+.slide-item.no-capture .slide-status-text{color:var(--yellow)}
 .slide-item.failed .slide-status-text{color:var(--red)}
+.btn-send{
+  display:flex;align-items:center;justify-content:center;
+  width:26px;height:26px;flex-shrink:0;
+  background:transparent;border:1px solid var(--border);border-radius:6px;
+  color:var(--text-secondary);cursor:pointer;transition:border-color .15s ease,color .15s ease;
+}
+.btn-send:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
+.btn-send:disabled{opacity:.3;cursor:not-allowed}
 /* ── BOTTOM ── */
 .bottombar{
   background:var(--surface);border-top:1px solid var(--border);
@@ -177,7 +187,7 @@ button{font-family:inherit}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="6 3 20 12 6 21 6 3"></polygon>
         </svg>
-        Start Sequence
+        <span id="startBtnLabel">Start Sequence</span>
       </button>
       <button class="btn btn-secondary" id="exportBtn" disabled>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

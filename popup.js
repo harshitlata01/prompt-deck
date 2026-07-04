@@ -45,6 +45,13 @@ document.getElementById("startBtn").addEventListener("click", startSequence);
 document.getElementById("exportBtn").addEventListener("click", exportPdf);
 document.getElementById("resetBtn").addEventListener("click", reset);
 
+// Per-slide manual "send" buttons are created dynamically — use delegation.
+document.getElementById("slideList").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-num]");
+  if (!btn || btn.disabled) return;
+  sendSingleSlide(parseInt(btn.dataset.num, 10));
+});
+
 // Drag-and-drop on drop zone
 const dropZone = document.getElementById("dropZone");
 
@@ -154,6 +161,7 @@ function showSlidesState() {
 function slideState(num) {
   if (!currentRunStatus) return "pending";
   if ((currentRunStatus.doneNumbers || []).includes(num)) return "done";
+  if ((currentRunStatus.noCaptureNumbers || []).includes(num)) return "no-capture";
   if ((currentRunStatus.failedNumbers || []).includes(num)) return "failed";
   if (currentRunStatus.currentNumber === num && currentRunStatus.phase === "running") return "active";
   return "pending";
@@ -163,13 +171,17 @@ const STATE_LABEL = {
   pending: "Pending",
   active: "Working…",
   done: "Done",
+  "no-capture": "No capture",
   failed: "Failed",
 };
+
+const SEND_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
 
 function renderSlides() {
   const list = document.getElementById("slideList");
   list.innerHTML = "";
 
+  const running = currentRunStatus && currentRunStatus.phase === "running";
   let doneCount = 0;
 
   slides.forEach((s) => {
@@ -183,12 +195,15 @@ function renderSlides() {
       <span class="slide-title">${escHtml(s.title)}</span>
       <span class="slide-status-text">${STATE_LABEL[state]}</span>
       <span class="slide-dot ${state}"></span>
+      <button class="btn-send" data-num="${s.number}" title="Send this slide's prompt now" ${running ? "disabled" : ""}>
+        ${SEND_ICON}
+      </button>
     `;
     list.appendChild(item);
   });
 
   const count = document.getElementById("slideCount");
-  count.textContent = currentRunStatus ? `${doneCount}/${slides.length} DONE` : `${slides.length} SLIDES`;
+  count.textContent = currentRunStatus ? `${doneCount}/${slides.length} done` : `${slides.length} slides`;
 }
 
 function updateActionButtons() {
@@ -197,7 +212,7 @@ function updateActionButtons() {
 
   const running = currentRunStatus && currentRunStatus.phase === "running";
   startBtn.disabled = running;
-  startBtn.textContent = running ? "▶ Running…" : "▶ Start Sequence";
+  document.getElementById("startBtnLabel").textContent = running ? "Running…" : "Start Sequence";
 
   const hasImages = currentRunStatus && (currentRunStatus.doneNumbers || []).length > 0;
   exportBtn.disabled = !hasImages;
@@ -246,6 +261,31 @@ async function startSequence() {
     type: "QUEUE_SEQUENCE",
     runId,
     slides,
+  });
+}
+
+// ── MANUAL PER-SLIDE SEND ────────────────────────────────────────────────────
+// Opens a fresh ChatGPT tab and injects just this one slide's prompt — for
+// retrying a single slide (e.g. one PromptDeck couldn't confirm an image
+// for) without restarting the whole deck. Reuses the current run's id so a
+// successful capture merges into the same deck's image set / PDF.
+
+async function sendSingleSlide(num) {
+  const slide = slides.find((s) => s.number === num);
+  if (!slide) return;
+  if (currentRunStatus && currentRunStatus.phase === "running") return;
+
+  if (!currentRunId) {
+    currentRunId = generateRunId();
+    await chrome.storage.local.set({
+      [LAST_RUN_KEY]: { runId: currentRunId, startedAt: Date.now() },
+    });
+  }
+
+  await chrome.runtime.sendMessage({
+    type: "QUEUE_SEQUENCE",
+    runId: currentRunId,
+    slides: [slide],
   });
 }
 
