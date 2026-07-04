@@ -131,6 +131,57 @@ button{font-family:inherit}
 }
 .btn-send:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
 .btn-send:disabled{opacity:.3;cursor:not-allowed}
+.slide-row-main{display:flex;align-items:center;gap:12px;width:100%}
+.slide-row-refs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-left:38px}
+.ref-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--elevated);border:1px solid var(--border);border-radius:5px;
+  color:var(--text-secondary);font-size:10.5px;font-weight:500;padding:3px 6px 3px 8px;
+}
+.ref-pill button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:0}
+.ref-pill button:hover{color:var(--red)}
+.btn-attach-ref{
+  background:transparent;border:1px dashed var(--border);border-radius:5px;
+  color:var(--muted);font-size:10.5px;font-weight:500;padding:3px 8px;cursor:pointer;
+}
+.btn-attach-ref:hover{border-color:var(--cyan);color:var(--cyan)}
+.ref-picker{
+  display:none;flex-direction:column;gap:6px;
+  margin-top:8px;padding-left:38px;
+}
+.ref-picker.open{display:flex}
+.ref-picker label{
+  display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;
+}
+.ref-picker .ref-picker-empty{font-size:12px;color:var(--muted)}
+/* ── REFERENCE IMAGES PANEL ── */
+.refs-panel{
+  border:1px solid var(--border);border-radius:8px;
+  padding:16px;margin-bottom:20px;
+}
+.refs-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.refs-title{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:2%;text-transform:uppercase}
+.refs-list{display:flex;flex-wrap:wrap;gap:10px}
+.refs-empty{font-size:12px;color:var(--muted)}
+.ref-item{
+  display:flex;align-items:center;gap:8px;
+  background:var(--elevated);border:1px solid var(--border);border-radius:6px;
+  padding:5px 6px 5px 5px;
+}
+.ref-thumb{width:24px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0}
+.ref-name{font-size:12px;color:var(--text);font-weight:500}
+.ref-delete{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 2px}
+.ref-delete:hover{color:var(--red)}
+.ref-pending{
+  display:flex;align-items:center;gap:8px;width:100%;
+  background:var(--elevated);border:1px solid var(--cyan);border-radius:6px;padding:8px;
+}
+.ref-pending input[type="text"]{
+  flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;
+  color:var(--text);font-size:12px;padding:6px 8px;font-family:inherit;
+}
+.ref-pending input[type="text"]:focus{outline:none;border-color:var(--cyan)}
+#refFileInput{display:none}
 /* ── BOTTOM ── */
 .bottombar{
   background:var(--surface);border-top:1px solid var(--border);
@@ -198,6 +249,22 @@ button{font-family:inherit}
         Export PDF
       </button>
     </div>
+
+    <div class="refs-panel">
+      <div class="refs-header">
+        <span class="refs-title">Reference images</span>
+        <button class="btn btn-ghost" id="addRefBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Add
+        </button>
+      </div>
+      <input type="file" id="refFileInput" accept="image/*">
+      <div class="refs-list" id="refsList"></div>
+    </div>
+
     <div class="slide-list" id="slideList"></div>
   </div>
 

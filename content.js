@@ -70,6 +70,14 @@ async function runSequence(runId, slides) {
 
     await sleep(400); // let React finish hydrating
 
+    if (slide.references && slide.references.length > 0) {
+      showBadge(
+        `Attaching ${slide.references.length} reference image${slide.references.length === 1 ? "" : "s"}…`,
+        "info"
+      );
+      await attachReferenceImages(slide.references);
+    }
+
     const injected = await injectText(textarea, slide.combined);
     if (!injected) {
       await markSlideOutcome(runId, slide.number, "failed");
@@ -342,11 +350,52 @@ function blobToDataUrl(blob) {
   });
 }
 
+// ── REFERENCE IMAGE ATTACHMENT ───────────────────────────────────────────────
+// Uploads saved reference images (logos, product shots, etc.) into ChatGPT's
+// composer before the prompt text is typed, so they ride along as real
+// attachments in the message rather than just being described in words.
+
+async function attachReferenceImages(references) {
+  const input = document.querySelector('input[type="file"]');
+  if (!input) {
+    console.warn("[PromptDeck] no file input found — skipping reference image attachment");
+    showBadge("Couldn't find ChatGPT's attach control — sending without reference images", "warn");
+    return false;
+  }
+
+  try {
+    const dt = new DataTransfer();
+    for (const ref of references) {
+      const res = await fetch(ref.dataUrl);
+      const blob = await res.blob();
+      const ext = (blob.type.split("/")[1] || "png").split("+")[0];
+      dt.items.add(new File([blob], `${sanitizeFilename(ref.name)}.${ext}`, { type: blob.type }));
+    }
+
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Give ChatGPT time to show the attachment thumbnail(s) and finish
+    // uploading before we type the caption and hit send.
+    await sleep(1200 + references.length * 1500);
+    return true;
+  } catch (err) {
+    console.error("[PromptDeck] reference image attach failed:", err);
+    showBadge("Reference image attach failed — sending without it", "warn");
+    return false;
+  }
+}
+
+function sanitizeFilename(name) {
+  return name.replace(/[^a-z0-9_-]+/gi, "_").slice(0, 40) || "reference";
+}
+
 // ── SUBMIT ───────────────────────────────────────────────────────────────────
 
 async function submitPrompt(el) {
-  // React needs a moment to enable the send button after the text lands.
-  for (let i = 0; i < 10; i++) {
+  // React needs a moment to enable the send button after the text lands
+  // (attachments in flight can make this take a little longer).
+  for (let i = 0; i < 25; i++) {
     const btn =
       document.querySelector('button[data-testid="send-button"]') ||
       document.querySelector('button[aria-label*="Send" i]');
