@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PromptDeck",
-  "version": "1.1.0",
-  "description": "Turn a slide-by-slide Markdown script into a single ChatGPT conversation: one image per slide, generated in order, then bundled into a PDF.",
+  "version": "1.2.0",
+  "description": "Turn a slide-by-slide Markdown script into a single ChatGPT conversation: one image per slide (with optional reference image attachments), generated in order, then bundled into a PDF.",
   "permissions": [
     "storage",
     "unlimitedStorage",

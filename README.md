@@ -16,6 +16,28 @@ which turns a rough idea into a properly structured deck script in the first
 place — but PromptDeck works with any Markdown file that follows the format
 below, however you produce it.
 
+## Features
+
+- **One conversation, not one tab per slide** — every slide's prompt is sent
+  in order inside a single ChatGPT conversation, each waiting for the
+  previous slide's image before the next prompt goes out.
+- **Automatic image detection & capture** — no manual saving; PromptDeck
+  watches for each slide's generated image, grabs the actual bytes, and
+  moves on.
+- **Automatic PDF export** — once the deck finishes, every captured image is
+  assembled into a single PDF (one slide per page, labeled) and downloaded.
+  An **Export PDF** button also lets you (re)download on demand, mid-run or
+  after.
+- **Per-slide retry** — a small send button on every slide row lets you
+  resend just that one slide's prompt without restarting the whole deck.
+- **Named reference images** — upload and name recurring assets (a logo, a
+  product shot) once, attach them to any slide, and PromptDeck uploads the
+  real file into ChatGPT's composer as an actual attachment. The library
+  persists across every deck you load afterward.
+- **A companion Claude Skill** ([`ppt-script`](skills/ppt-script/SKILL.md))
+  that teaches Claude the exact Markdown format PromptDeck expects, so you
+  can go from a rough idea to a ready-to-run deck script in one prompt.
+
 ---
 
 ## How it fits together
@@ -98,12 +120,27 @@ generate Image
 <that slide's section — layout, headline, visual brief, etc.>
 ```
 
-The PromptDeck tab shows live status per slide (pending / working / done /
-failed) so you can watch progress without babysitting the ChatGPT tab. If a
-slide's image doesn't show up in time, PromptDeck marks it failed and moves
-on to the next slide rather than stalling the whole deck.
+The PromptDeck tab shows live status per slide as it goes:
 
-### 4. Get your PDF
+| Status | Meaning |
+|---|---|
+| Pending | Not sent yet |
+| Working… | Prompt sent, image generation in progress |
+| Done | Image captured successfully |
+| No capture | Prompt sent fine, but no image was confirmed/saved in time — not a hard error |
+| Failed | The prompt itself couldn't be typed/sent |
+
+A slide marked **No capture** or **Failed** doesn't stall the deck — PromptDeck
+moves on to the next slide automatically.
+
+### 4. Retry a single slide
+
+Every slide row has a small send button. Click it any time to (re)send just
+that one slide's prompt in a fresh ChatGPT tab — handy for a slide that came
+back **No capture**, without re-running the whole deck. A successful retry
+merges into the same deck's results, so it still shows up in the PDF.
+
+### 5. Get your PDF
 
 Once the last slide finishes, PromptDeck automatically assembles every
 captured image into a PDF (one slide per page, labeled with its number and
@@ -216,8 +253,8 @@ automatic PDF assembly straightforward.
 ```
 manifest.json              Chrome extension manifest (MV3)
 background.js               Service worker — opens the ChatGPT tab, hands off the slide queue
-content.js                   Runs on chatgpt.com — injects prompts, detects & captures images, exports PDF
-popup.html / popup.js        The PromptDeck UI (opened as a full tab) + on-demand PDF export
+content.js                   Runs on chatgpt.com — attaches references, injects prompts, detects & captures images, exports PDF
+popup.html / popup.js        The PromptDeck UI (opened as a full tab): parsing, per-slide retry, reference image library, on-demand PDF export
 lib/pdf-lib.min.js            Vendored PDF library (MIT) used for PDF assembly
 icons/                       Extension icons + the script that generated them
 skills/ppt-script/SKILL.md   Claude Skill for authoring deck scripts
