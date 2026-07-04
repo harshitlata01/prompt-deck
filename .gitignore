@@ -1,0 +1,17 @@
+# Editor / tooling
+.claude/
+.vscode/
+.idea/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Packaged extension artifacts
+*.zip
+*.crx
+*.pem
+
+# Python cache from icons/generate_icons.py
+__pycache__/
+*.pyc
