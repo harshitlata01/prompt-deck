@@ -1,13 +1,15 @@
 # PromptDeck
 
-Turn a slide-by-slide Markdown script into a queue of image-generation prompts,
-auto-injected into ChatGPT — one tab per slide, no copy-pasting.
+Turn a slide-by-slide Markdown script into one ChatGPT conversation that
+generates every slide's image in order — then bundles the results into a PDF.
 
 PromptDeck is a Chrome extension for anyone who scripts out a deck (pitch,
-product, proposal) slide-by-slide and then needs to generate a matching image
-for every single slide in ChatGPT. Instead of opening a new chat and pasting
-a prompt 20 times, you load one `.md` file and let PromptDeck open and fill
-each tab for you.
+product, proposal) slide-by-slide and then needs a matching image for every
+single slide. Instead of pasting a prompt into ChatGPT 20 times and manually
+saving each image, you load one `.md` file, click **Start Sequence**, and
+PromptDeck drives the whole thing: one conversation, one prompt per slide,
+in order, capturing each generated image as it appears — then exports a PDF
+automatically once the deck is done.
 
 It pairs naturally with the included [`ppt-script` Claude Skill](skills/ppt-script/SKILL.md),
 which turns a rough idea into a properly structured deck script in the first
@@ -19,12 +21,15 @@ below, however you produce it.
 ## How it fits together
 
 ```
- 1. Claude (with the ppt-script skill)      2. PromptDeck (this extension)        3. ChatGPT
- ─────────────────────────────────          ───────────────────────────────       ─────────────
- "Write a deck script for..."       ──▶     Load the .md file            ──▶      One tab opens
- generates a structured .md                 Click a slide, or                     per slide, prompt
- file: global design system +               "Inject All"                         is typed & sent
- one ## SLIDE section per slide                                                   automatically
+ 1. Claude (ppt-script skill)      2. PromptDeck (this extension)             3. ChatGPT
+ ───────────────────────────       ─────────────────────────────────         ──────────────
+ "Write a deck script      ──▶     Load the .md, click Start Sequence ──▶    One conversation:
+ for..." generates a               PromptDeck injects each slide's           each prompt sent,
+ structured .md file:               prompt in turn, waits for its             its image awaited,
+ design system + one                image, captures it, moves on             then the next slide
+ ## SLIDE section each                                                       │
+                                                                              ▼
+                                    PDF auto-downloads       ◀───────  all slides captured
 ```
 
 You only need PromptDeck to use the extension. The skill is there so the
@@ -71,12 +76,15 @@ following the same structure.
 Click the PromptDeck toolbar icon, then drag your `.md` file onto the drop
 zone (or click to browse). PromptDeck parses it into a list of slides.
 
-### 3. Send prompts to ChatGPT
+### 3. Start the sequence
 
-- Click **→ ChatGPT** next to any slide to open a fresh ChatGPT tab and
-  auto-inject + submit that slide's image prompt.
-- Click **Inject All** to do this for every slide in sequence, each in its
-  own tab.
+Click **Start Sequence**. PromptDeck opens one ChatGPT tab and, in that
+single conversation:
+
+1. Injects the first slide's prompt and submits it.
+2. Watches for the generated image to actually appear and finish loading.
+3. Captures it, then injects the next slide's prompt into the same
+   conversation — and so on, in order, until every slide is done.
 
 Each slide's prompt is:
 
@@ -90,8 +98,18 @@ generate Image
 <that slide's section — layout, headline, visual brief, etc.>
 ```
 
-PromptDeck tracks which slides have already been sent (a green dot + "✓ Sent")
-so you can safely reopen the extension mid-deck without resending everything.
+The PromptDeck tab shows live status per slide (pending / working / done /
+failed) so you can watch progress without babysitting the ChatGPT tab. If a
+slide's image doesn't show up in time, PromptDeck marks it failed and moves
+on to the next slide rather than stalling the whole deck.
+
+### 4. Get your PDF
+
+Once the last slide finishes, PromptDeck automatically assembles every
+captured image into a PDF (one slide per page, labeled with its number and
+title) and downloads it. You can also click **Export PDF** at any time —
+during or after a run — to (re)download a PDF of whatever's been captured
+so far.
 
 ---
 
@@ -122,13 +140,39 @@ deck script, if you're not using Claude Code.
 
 ---
 
-## Why per-tab prompt queueing?
+## How image capture & PDF export work
 
-Chrome's `chrome.storage.session` only holds one shared value, which races
-when several ChatGPT tabs are opened back-to-back via "Inject All". PromptDeck's
-background service worker opens each tab itself and remembers which prompt
-belongs to which tab ID, so every tab reliably gets its own slide — even when
-several are opened within milliseconds of each other.
+- **Detecting a finished image**: rather than trying to track ChatGPT's
+  stop/regenerate button state (a moving target that changes with every UI
+  update), PromptDeck polls the DOM for a new `<img>` large enough to be a
+  generated slide (not an avatar or icon) and waits for it to finish loading.
+  If nothing shows up within 90 seconds, that slide is marked failed and the
+  sequence continues with the next prompt.
+- **Capturing the image**: PromptDeck first tries fetching the image's bytes
+  directly; if that's blocked by cross-origin restrictions, it falls back to
+  drawing the already-rendered `<img>` onto a canvas. Captured images are
+  written to `chrome.storage.local` (the `unlimitedStorage` permission is
+  used specifically so a multi-slide deck's images don't hit the default 10MB
+  quota).
+- **Building the PDF**: done entirely client-side with the vendored
+  [pdf-lib](https://pdf-lib.js.org/) (`lib/pdf-lib.min.js`, MIT-licensed —
+  see [`lib/pdf-lib.LICENSE.md`](lib/pdf-lib.LICENSE.md)). Manifest V3 forbids
+  loading remote code, so this is bundled locally rather than pulled from a
+  CDN at runtime.
+
+This whole pipeline depends on ChatGPT's current DOM structure, same as the
+prompt-injection code — if OpenAI changes their markup, the image detector or
+injection methods may need updating.
+
+---
+
+## Why one conversation instead of one tab per slide?
+
+Earlier versions of PromptDeck opened a new ChatGPT tab per slide. Driving
+the whole deck through a single conversation instead is simpler and more
+robust: there's no per-tab bookkeeping race in the background worker, the
+generated images end up in one place in the right order, and that made
+automatic PDF assembly straightforward.
 
 ---
 
@@ -136,9 +180,10 @@ several are opened within milliseconds of each other.
 
 ```
 manifest.json              Chrome extension manifest (MV3)
-background.js               Service worker — opens tabs, tracks prompt-per-tab
-content.js                   Runs on chatgpt.com — injects & submits the prompt
-popup.html / popup.js        The PromptDeck UI (opened as a full tab)
+background.js               Service worker — opens the ChatGPT tab, hands off the slide queue
+content.js                   Runs on chatgpt.com — injects prompts, detects & captures images, exports PDF
+popup.html / popup.js        The PromptDeck UI (opened as a full tab) + on-demand PDF export
+lib/pdf-lib.min.js            Vendored PDF library (MIT) used for PDF assembly
 icons/                       Extension icons + the script that generated them
 skills/ppt-script/SKILL.md   Claude Skill for authoring deck scripts
 examples/                    Sample deck script you can load immediately
@@ -152,4 +197,6 @@ Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) for PromptDeck itself. The vendored `lib/pdf-lib.min.js` is
+MIT-licensed separately by its authors — see
+[`lib/pdf-lib.LICENSE.md`](lib/pdf-lib.LICENSE.md).

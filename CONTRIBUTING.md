@@ -24,16 +24,31 @@ pip install pillow
 python icons/generate_icons.py
 ```
 
+## Updating the vendored PDF library
+
+`lib/pdf-lib.min.js` is [pdf-lib](https://pdf-lib.js.org/) (MIT), vendored
+locally because Manifest V3 forbids loading remote code. To update it:
+
+```bash
+curl -sL https://unpkg.com/pdf-lib@<version>/dist/pdf-lib.min.js -o lib/pdf-lib.min.js
+curl -sL https://unpkg.com/pdf-lib@<version>/LICENSE.md -o lib/pdf-lib.LICENSE.md
+```
+
+Don't hand-edit this file.
+
 ## Reporting bugs
 
 Please include:
 - Chrome version
 - The `.md` file (or a minimal snippet) that triggered the issue
-- Whether the failure is in parsing (popup) or injection (ChatGPT tab)
+- Which stage failed: parsing (popup), prompt injection, image detection/capture,
+  or PDF export — check the on-page badge and the console (`[PromptDeck]` logs)
+  in the ChatGPT tab for hints
 
 ## Pull requests
 
 - Keep PRs focused on one change.
 - Match the existing code style (no build tooling, no framework — plain JS).
-- Test the full flow manually (load a script → inject a slide → confirm it
-  lands and sends in ChatGPT) before opening the PR.
+- Test the full flow manually (load a script → Start Sequence → confirm a
+  slide's prompt lands, its image is captured, and the PDF export works)
+  before opening the PR.
