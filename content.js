@@ -77,11 +77,18 @@ async function runSequence(runId, slides) {
       continue;
     }
 
+    const priorUserTurns = getUserTurns().length;
     await submitPrompt(textarea);
     await setRunStatus(runId, { currentPhase: "waiting-image" });
     showBadge(`Slide ${slide.number} sent — waiting for image…`, "info");
 
-    const imgEl = await waitForGeneratedImage(IMAGE_TIMEOUT_MS);
+    // Scope image detection to THIS slide's own turn. Without this, a
+    // previous slide's image that finishes rendering late (after we'd
+    // already given up on it) can get mistaken for the current slide's
+    // image, since both are just "some new <img> that showed up."
+    const myTurn = await waitForOwnUserTurn(priorUserTurns);
+
+    const imgEl = await waitForGeneratedImage(IMAGE_TIMEOUT_MS, myTurn);
     if (!imgEl) {
       // The prompt was sent fine — ChatGPT may still be working, or already
       // rendered an image our detector didn't recognize. Not a hard failure.
@@ -221,14 +228,50 @@ function isCandidateImage(img) {
   );
 }
 
+// ChatGPT tags each message group with data-message-author-role="user" or
+// "assistant". We use the user-turn markers to know exactly which slide a
+// given image belongs to — without this, a PREVIOUS slide's image finishing
+// late (after we'd already given up waiting on it) can be mistaken for the
+// CURRENT slide's image, since both are just "some new <img> that showed up."
+function getUserTurns() {
+  return Array.from(document.querySelectorAll('[data-message-author-role="user"]'));
+}
+
+function waitForOwnUserTurn(priorCount, timeoutMs = 15_000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const poll = () => {
+      const turns = getUserTurns();
+      if (turns.length > priorCount) {
+        resolve(turns[turns.length - 1]);
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        resolve(null); // selector didn't match this ChatGPT UI version — degrade gracefully
+        return;
+      }
+      setTimeout(poll, 300);
+    };
+    poll();
+  });
+}
+
+function isAfterNode(node, referenceNode) {
+  if (!referenceNode) return true; // no scoping available — fall back to unscoped search
+  return !!(referenceNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
 // ChatGPT sometimes inserts a placeholder <img> immediately and swaps its
 // `src` once generation finishes, rather than appending a brand-new element.
 // So "the image is ready" has to mean either "a new candidate element
 // appeared" OR "the last candidate element's src changed" — watching only
 // for new elements misses the swap case and times out even though the image
 // rendered fine.
-function waitForGeneratedImage(timeoutMs) {
-  const candidates = () => Array.from(document.querySelectorAll("img")).filter(isCandidateImage);
+function waitForGeneratedImage(timeoutMs, afterNode) {
+  const candidates = () =>
+    Array.from(document.querySelectorAll("img"))
+      .filter(isCandidateImage)
+      .filter((img) => isAfterNode(img, afterNode));
 
   const baseline = candidates();
   const baselineCount = baseline.length;
